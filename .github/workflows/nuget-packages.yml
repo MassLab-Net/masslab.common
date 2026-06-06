@@ -1,0 +1,114 @@
+name: Build NuGet packages
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  workflow_dispatch:
+    inputs:
+      version_prefix:
+        description: "Semantic version prefix used before the GitHub run number"
+        required: false
+        default: "1.0"
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  SOLUTION_FILE: MassLab.Common.sln
+  PACKAGE_OUTPUT: artifacts/packages
+  NUGET_SOURCE: https://api.nuget.org/v3/index.json
+  NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+
+jobs:
+  pack:
+    name: Build, test, and pack
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Compute package version
+        shell: bash
+        run: |
+          VERSION_PREFIX="${{ github.event.inputs.version_prefix || '1.0' }}"
+          PACKAGE_VERSION="${VERSION_PREFIX}.${GITHUB_RUN_NUMBER}"
+          FILE_VERSION="${VERSION_PREFIX}.${GITHUB_RUN_NUMBER}.0"
+
+          echo "PACKAGE_VERSION=${PACKAGE_VERSION}" >> "$GITHUB_ENV"
+          echo "FILE_VERSION=${FILE_VERSION}" >> "$GITHUB_ENV"
+          echo "Package version: ${PACKAGE_VERSION}"
+
+      - name: Restore
+        run: dotnet restore "$SOLUTION_FILE" -p:NuGetAudit=false
+
+      - name: Build
+        run: >
+          dotnet build "$SOLUTION_FILE"
+          --configuration Release
+          --no-restore
+          -p:Version="$PACKAGE_VERSION"
+          -p:PackageVersion="$PACKAGE_VERSION"
+          -p:FileVersion="$FILE_VERSION"
+          -p:AssemblyVersion="1.0.0.0"
+          -p:ContinuousIntegrationBuild=true
+
+      - name: Test
+        run: >
+          dotnet test "$SOLUTION_FILE"
+          --configuration Release
+          --no-build
+          --verbosity normal
+
+      - name: Pack
+        shell: bash
+        run: |
+          mkdir -p "$PACKAGE_OUTPUT"
+
+          mapfile -t PROJECTS < <(
+            find . \
+              -path '*/bin' -prune -o \
+              -path '*/obj' -prune -o \
+              -path './tests/*' -prune -o \
+              -name '*.Tests.csproj' -prune -o \
+              -name '*.csproj' -print | sort
+          )
+
+          for project in "${PROJECTS[@]}"; do
+            echo "Packing ${project}"
+            dotnet pack "$project" \
+              --configuration Release \
+              --no-build \
+              --output "$PACKAGE_OUTPUT" \
+              -p:Version="$PACKAGE_VERSION" \
+              -p:PackageVersion="$PACKAGE_VERSION" \
+              -p:FileVersion="$FILE_VERSION" \
+              -p:AssemblyVersion="1.0.0.0" \
+              -p:ContinuousIntegrationBuild=true
+          done
+
+      - name: Upload NuGet package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages-${{ env.PACKAGE_VERSION }}
+          path: |
+            ${{ env.PACKAGE_OUTPUT }}/*.nupkg
+            ${{ env.PACKAGE_OUTPUT }}/*.snupkg
+          if-no-files-found: error
+
+      - name: Push packages to NuGet
+        if: ${{ env.NUGET_API_KEY != '' }}
+        run: >
+          dotnet nuget push "${PACKAGE_OUTPUT}/*.nupkg"
+          --source "$NUGET_SOURCE"
+          --api-key "$NUGET_API_KEY"
+          --skip-duplicate
