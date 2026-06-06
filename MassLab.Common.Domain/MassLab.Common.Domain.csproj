@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0</AssemblyVersion>
+    <FileVersion>1.0.0</FileVersion>
+    <Description>Domain primitives (Entity, AggregateRoot, ValueObject, IDomainEvent, IAuditable, ISoftDeletable, ITenantOwned, ISpecification&lt;T&gt;) for the MassLab framework. Zero external dependencies.</Description>
+  </PropertyGroup>
+
+</Project>

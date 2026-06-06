@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0</AssemblyVersion>
+    <FileVersion>1.0.0</FileVersion>
+    <Authors>MassLab Team</Authors>
+    <Company>MassLab</Company>
+    <Product>MassLab.Common.Caching</Product>
+    <Description>Base abstractions for caching in the MassLab.Common ecosystem. Provides interfaces and models for cache-agnostic code that works with both in-memory and distributed Redis caching providers.</Description>
+    <PackageTags>caching;abstractions;redis;memory;distributed</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
+  </ItemGroup>
+
+</Project>
