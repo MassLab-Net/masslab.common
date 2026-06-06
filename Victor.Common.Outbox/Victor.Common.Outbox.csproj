@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Version>1.0.0</Version>
+    <Description>Transactional outbox pattern for the Victor framework. Captures domain events into an EFCore-managed outbox table inside the same transaction, then dispatches them via IEventBus.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Victor.Common.Caching\Victor.Common.Caching.csproj" />
+    <ProjectReference Include="..\Victor.Common.Domain\Victor.Common.Domain.csproj" />
+    <ProjectReference Include="..\Victor.Common.Messaging\Victor.Common.Messaging.csproj" />
+  </ItemGroup>
+
+</Project>

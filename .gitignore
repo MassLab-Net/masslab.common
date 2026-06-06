@@ -1,0 +1,64 @@
+# Build results
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Visual Studio
+.vs/
+TestResults/
+BenchmarkDotNet.Artifacts/
+
+# Rider / JetBrains
+.idea/
+*.sln.iml
+
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# .NET generated files
+project.lock.json
+project.assets.json
+artifacts/
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+!**/packages/build/
+*.nuget.props
+*.nuget.targets
+
+# Test and coverage output
+coverage/
+coverage.*
+*.coverage
+*.coveragexml
+*.trx
+*.cobertura.xml
+
+# Publish output
+publish/
+app.publish/
+
+# Local configuration
+appsettings.Development.local.json
+appsettings.Local.json
+*.local.json
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
