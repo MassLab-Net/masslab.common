@@ -9,15 +9,11 @@ namespace MassLab.Common.Database.Tests;
 /// </summary>
 public class PackageDependencyIsolationTests
 {
-    private const string CommonPath = "MassLab/common";
-    
     [Fact]
     public void EFCorePostgreSQL_ShouldNotReference_SqlServerOrMySqlPackages()
     {
         // Arrange
-        var projectPath = Path.Combine(GetSolutionRoot(), CommonPath, 
-            "MassLab.Common.Database.EFCore.PostgreSQL", 
-            "MassLab.Common.Database.EFCore.PostgreSQL.csproj");
+        var projectPath = ProjectPath("MassLab.Common.Database.EFCore.PostgreSQL");
         
         // Act
         var packageReferences = GetPackageReferences(projectPath);
@@ -35,9 +31,7 @@ public class PackageDependencyIsolationTests
     public void EFCoreSqlServer_ShouldNotReference_PostgreSqlOrMySqlPackages()
     {
         // Arrange
-        var projectPath = Path.Combine(GetSolutionRoot(), CommonPath, 
-            "MassLab.Common.Database.EFCore.SqlServer", 
-            "MassLab.Common.Database.EFCore.SqlServer.csproj");
+        var projectPath = ProjectPath("MassLab.Common.Database.EFCore.SqlServer");
         
         // Act
         var packageReferences = GetPackageReferences(projectPath);
@@ -55,9 +49,7 @@ public class PackageDependencyIsolationTests
     public void EFCoreMySQL_ShouldNotReference_PostgreSqlOrSqlServerPackages()
     {
         // Arrange
-        var projectPath = Path.Combine(GetSolutionRoot(), CommonPath, 
-            "MassLab.Common.Database.EFCore.MySQL", 
-            "MassLab.Common.Database.EFCore.MySQL.csproj");
+        var projectPath = ProjectPath("MassLab.Common.Database.EFCore.MySQL");
         
         // Act
         var packageReferences = GetPackageReferences(projectPath);
@@ -75,9 +67,7 @@ public class PackageDependencyIsolationTests
     public void DapperPostgreSQL_ShouldNotReference_SqlServerOrMySqlPackages()
     {
         // Arrange
-        var projectPath = Path.Combine(GetSolutionRoot(), CommonPath, 
-            "MassLab.Common.Database.Dapper.PostgreSQL", 
-            "MassLab.Common.Database.Dapper.PostgreSQL.csproj");
+        var projectPath = ProjectPath("MassLab.Common.Database.Dapper.PostgreSQL");
         
         // Act
         var packageReferences = GetPackageReferences(projectPath);
@@ -95,9 +85,7 @@ public class PackageDependencyIsolationTests
     public void DapperSqlServer_ShouldNotReference_PostgreSqlOrMySqlPackages()
     {
         // Arrange
-        var projectPath = Path.Combine(GetSolutionRoot(), CommonPath, 
-            "MassLab.Common.Database.Dapper.SqlServer", 
-            "MassLab.Common.Database.Dapper.SqlServer.csproj");
+        var projectPath = ProjectPath("MassLab.Common.Database.Dapper.SqlServer");
         
         // Act
         var packageReferences = GetPackageReferences(projectPath);
@@ -115,9 +103,7 @@ public class PackageDependencyIsolationTests
     public void DapperMySQL_ShouldNotReference_PostgreSqlOrSqlServerPackages()
     {
         // Arrange
-        var projectPath = Path.Combine(GetSolutionRoot(), CommonPath, 
-            "MassLab.Common.Database.Dapper.MySQL", 
-            "MassLab.Common.Database.Dapper.MySQL.csproj");
+        var projectPath = ProjectPath("MassLab.Common.Database.Dapper.MySQL");
         
         // Act
         var packageReferences = GetPackageReferences(projectPath);
@@ -131,6 +117,9 @@ public class PackageDependencyIsolationTests
             "Dapper.MySQL should reference MySqlConnector");
     }
     
+    private static string ProjectPath(string project)
+        => Path.Combine(GetSolutionRoot(), project, $"{project}.csproj");
+
     private static List<string> GetPackageReferences(string projectPath)
     {
         if (!File.Exists(projectPath))
@@ -151,8 +140,7 @@ public class PackageDependencyIsolationTests
     {
         var currentDir = Directory.GetCurrentDirectory();
         
-        // Navigate up until we find the MassLab.sln file
-        while (!File.Exists(Path.Combine(currentDir, "MassLab", "MassLab.sln")))
+        while (!File.Exists(Path.Combine(currentDir, "MassLab.Common.sln")))
         {
             var parent = Directory.GetParent(currentDir);
             if (parent == null)

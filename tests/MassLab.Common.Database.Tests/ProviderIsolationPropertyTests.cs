@@ -34,7 +34,7 @@ public class ProviderIsolationPropertyTests
     private static bool BooleanIsTrue(bool value) => value;
 
     private static string ProjectPath(string project)
-        => Path.Combine(GetSolutionRoot(), "MassLab", "common", project, $"{project}.csproj");
+        => Path.Combine(GetSolutionRoot(), project, $"{project}.csproj");
 
     private static List<string> GetPackageReferences(string projectPath)
         => XDocument.Load(projectPath)
@@ -46,7 +46,7 @@ public class ProviderIsolationPropertyTests
     private static string GetSolutionRoot()
     {
         var currentDir = Directory.GetCurrentDirectory();
-        while (!File.Exists(Path.Combine(currentDir, "MassLab", "MassLab.sln")))
+        while (!File.Exists(Path.Combine(currentDir, "MassLab.Common.sln")))
             currentDir = Directory.GetParent(currentDir)?.FullName
                          ?? throw new InvalidOperationException("Could not find solution root");
         return currentDir;
