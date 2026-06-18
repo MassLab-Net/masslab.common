@@ -1,0 +1,8 @@
+﻿{
+  "RateLimiting": {
+    "PermitLimit": 100,
+    "WindowSeconds": 60,
+    "PartitionBy": "ip",
+    "PerEndpoint": false
+  }
+}

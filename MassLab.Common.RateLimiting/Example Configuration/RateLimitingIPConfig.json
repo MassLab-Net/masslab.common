@@ -1,0 +1,29 @@
+﻿{
+  "RateLimiting": {
+    "PermitLimit": 100,
+    "WindowSeconds": 60,
+    "PartitionBy": "ip",
+    "PerEndpoint": true,
+    
+    "IpPartition": {
+      "Policies": {
+        "192.168.1.100": {
+          "DefaultLimit": {
+            "PermitLimit": 1000
+          }
+        },
+        "10.0.0.*": {
+          "DefaultLimit": {
+            "PermitLimit": 500,
+            "PerEndpoint": true
+          },
+          "EndpointOverrides": {
+            "/api/internal/*": {
+              "PermitLimit": 10000
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -10,17 +11,12 @@ using MassLab.Common.RateLimiting.Configuration;
 namespace MassLab.Common.RateLimiting.Extensions;
 
 /// <summary>
-/// Service-collection &amp; application-builder extensions for rate limiting.
+/// Service-collection and application-builder extensions for rate limiting.
 /// </summary>
 public static class RateLimitingExtensions
 {
-    /// <summary>Default policy name registered by <c>AddMassLabRateLimiting</c>.</summary>
     public const string DefaultPolicyName = "masslab-default";
 
-    /// <summary>
-    /// Registers a fixed-window rate limiter partitioned by authenticated
-    /// user id (falling back to remote IP).
-    /// </summary>
     public static IServiceCollection AddMassLabRateLimiting(
         this IServiceCollection services,
         IConfiguration? configuration = null,
@@ -43,46 +39,42 @@ public static class RateLimitingExtensions
 
         services.AddRateLimiter(options =>
         {
+            // Global limiter - applies to all requests
             options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
             {
-                var sp = httpContext.RequestServices;
-                var opts = sp.GetRequiredService<IOptions<RateLimitingOptions>>().Value;
-                Validate(opts);
-                var partitionKey = ResolvePartitionKey(httpContext, opts);
-                return CreateLimiter(partitionKey, opts, null);
+                var opts = httpContext.RequestServices.GetRequiredService<IOptions<RateLimitingOptions>>().Value;
+                var (partitionKey, policy) = ResolveClientPolicy(httpContext, opts);
+                return CreateLimiter(partitionKey, opts, policy);
             });
 
+            // Default named policy
             options.AddPolicy(DefaultPolicyName, httpContext =>
             {
                 var opts = httpContext.RequestServices.GetRequiredService<IOptions<RateLimitingOptions>>().Value;
-                Validate(opts);
-                var partitionKey = ResolvePartitionKey(httpContext, opts);
-                return CreateLimiter(partitionKey, opts, null);
+                var (partitionKey, policy) = ResolveClientPolicy(httpContext, opts);
+                return CreateLimiter(partitionKey, opts, policy);
             });
 
+            // Named policies from config
             foreach (var policyName in configuredPolicyNames)
             {
                 options.AddPolicy(policyName, httpContext =>
                 {
                     var opts = httpContext.RequestServices.GetRequiredService<IOptions<RateLimitingOptions>>().Value;
-                    Validate(opts);
-                    var activePolicy = opts.Policies.TryGetValue(policyName, out var configured) ? configured : new RateLimitPolicyOptions();
-                    var partitionKey = ResolvePolicyPartitionKey(httpContext, policyName, activePolicy, opts);
+                    var activePolicy = opts.Policies.GetValueOrDefault(policyName) ?? new RateLimitPolicyOptions();
+                    var partitionKey = ResolveNamedPolicyPartitionKey(httpContext, policyName, activePolicy, opts);
                     return CreateLimiter(partitionKey, opts, activePolicy);
                 });
             }
 
             options.OnRejected = async (ctx, ct) =>
             {
-                var opts = ctx.HttpContext.RequestServices
-                    .GetRequiredService<IOptions<RateLimitingOptions>>().Value;
+                var opts = ctx.HttpContext.RequestServices.GetRequiredService<IOptions<RateLimitingOptions>>().Value;
                 ctx.HttpContext.Response.StatusCode = opts.RejectionStatusCode;
+                
                 if (ctx.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retry))
                     ctx.HttpContext.Response.Headers.RetryAfter = ((int)retry.TotalSeconds).ToString();
-                if (ctx.Lease.TryGetMetadata(MetadataName.ReasonPhrase, out _))
-                {
-                    // Attempt to provide limit info from options
-                }
+                
                 ctx.HttpContext.Response.Headers["X-RateLimit-Limit"] = opts.PermitLimit.ToString();
                 ctx.HttpContext.Response.Headers["X-RateLimit-Remaining"] = "0";
                 await ctx.HttpContext.Response.WriteAsync("Too many requests.", ct);
@@ -92,44 +84,124 @@ public static class RateLimitingExtensions
         return services;
     }
 
-    private static string ResolvePartitionKey(HttpContext ctx, RateLimitingOptions opts)
+    /// <summary>
+    /// Resolves client-specific policy based on PartitionBy setting.
+    /// </summary>
+    private static (string PartitionKey, RateLimitPolicyOptions? Policy) ResolveClientPolicy(
+        HttpContext ctx, RateLimitingOptions opts)
     {
-        if (opts.UseUserPartitioning)
+        var endpoint = $"{ctx.Request.Method}:{ctx.Request.Path}";
+        var isUserPartition = string.Equals(opts.PartitionBy, "user", StringComparison.OrdinalIgnoreCase);
+
+        if (isUserPartition)
         {
-            var userId = ctx.User.FindFirst("sub")?.Value
-                         ?? ctx.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-            if (!string.IsNullOrWhiteSpace(userId)) return $"user:{userId}";
+            var userId = ResolveUserId(ctx, opts);
+            if (!string.IsNullOrEmpty(userId))
+            {
+                var clientPolicy = FindClientPolicy(opts.UserPartition?.Policies, userId);
+                var effectivePolicy = ResolveEndpointPolicy(clientPolicy, ctx.Request.Path, opts);
+                var perEndpoint = effectivePolicy?.PerEndpoint ?? opts.PerEndpoint;
+                var key = perEndpoint ? $"user:{userId}:{endpoint}" : $"user:{userId}";
+                return (key, effectivePolicy);
+            }
         }
-        return $"ip:{ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown"}";
+
+        // IP partition or fallback
+        var ip = ResolveIp(ctx);
+        var ipClientPolicy = FindClientPolicy(opts.IpPartition?.Policies, ip);
+        var ipEffectivePolicy = ResolveEndpointPolicy(ipClientPolicy, ctx.Request.Path, opts);
+        var ipPerEndpoint = ipEffectivePolicy?.PerEndpoint ?? opts.PerEndpoint;
+        var ipKey = ipPerEndpoint ? $"ip:{ip}:{endpoint}" : $"ip:{ip}";
+        return (ipKey, ipEffectivePolicy);
     }
 
-    private static string ResolvePolicyPartitionKey(
-        HttpContext ctx,
-        string policyName,
-        RateLimitPolicyOptions policy,
-        RateLimitingOptions opts)
+    /// <summary>
+    /// Finds matching client policy by exact match or wildcard.
+    /// </summary>
+    private static ClientRateLimitPolicy? FindClientPolicy(
+        Dictionary<string, ClientRateLimitPolicy>? policies, string clientId)
     {
+        if (policies == null || policies.Count == 0) return null;
+
+        // Exact match first
+        if (policies.TryGetValue(clientId, out var exact)) return exact;
+
+        // Wildcard match (e.g., "10.0.0.*" matches "10.0.0.123")
+        foreach (var (pattern, policy) in policies)
+        {
+            if (MatchesWildcard(pattern, clientId)) return policy;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Resolves endpoint-specific policy or falls back to default.
+    /// </summary>
+    private static RateLimitPolicyOptions? ResolveEndpointPolicy(
+        ClientRateLimitPolicy? clientPolicy, PathString path, RateLimitingOptions opts)
+    {
+        if (clientPolicy == null) return null;
+
+        // Check endpoint overrides with wildcard support
+        foreach (var (pattern, policy) in clientPolicy.EndpointOverrides)
+        {
+            if (MatchesWildcard(pattern, path.Value ?? ""))
+            {
+                policy.PerEndpoint = true;
+                return policy;
+            }
+        }
+
+        return clientPolicy.DefaultLimit;
+    }
+
+    /// <summary>
+    /// Resolves partition key for named policies ([EnableRateLimiting]).
+    /// </summary>
+    private static string ResolveNamedPolicyPartitionKey(
+        HttpContext ctx, string policyName, RateLimitPolicyOptions policy, RateLimitingOptions opts)
+    {
+        var endpoint = $"{ctx.Request.Method}:{ctx.Request.Path}";
+        var perEndpoint = policy.PerEndpoint ?? opts.PerEndpoint;
+
         return policy.PartitionBy.ToLowerInvariant() switch
         {
-            "endpoint" => $"endpoint:{policyName}:{ctx.Request.Method}:{ctx.Request.Path}",
-            "user" => $"user:{ResolveUserId(ctx) ?? ResolveIp(ctx)}",
-            _ => opts.UseUserPartitioning && ResolveUserId(ctx) is { Length: > 0 } userId
-                ? $"user:{userId}"
-                : $"ip:{ResolveIp(ctx)}"
+            "endpoint" => $"policy:{policyName}:{endpoint}",
+            "user" => BuildKey("user", ResolveUserId(ctx, opts) ?? ResolveIp(ctx), endpoint, perEndpoint),
+            _ => BuildKey("ip", ResolveIp(ctx), endpoint, perEndpoint)
         };
     }
 
-    private static string? ResolveUserId(HttpContext ctx)
-        => ctx.User.FindFirst("sub")?.Value
-           ?? ctx.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+    private static string BuildKey(string prefix, string id, string endpoint, bool perEndpoint)
+        => perEndpoint ? $"{prefix}:{id}:{endpoint}" : $"{prefix}:{id}";
+
+    private static string? ResolveUserId(HttpContext ctx, RateLimitingOptions opts)
+    {
+        var claimName = opts.UserPartition?.ClaimName ?? "sub";
+        var fallback = opts.UserPartition?.FallbackClaimName ?? System.Security.Claims.ClaimTypes.NameIdentifier;
+        
+        var userId = ctx.Items["ClientId"] as string ?? ctx.User.FindFirst(claimName)?.Value ?? ctx.User.FindFirst(fallback)?.Value;
+        return userId;
+    }
 
     private static string ResolveIp(HttpContext ctx)
         => ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
+    /// <summary>
+    /// Matches value against a wildcard pattern. Supports "*" for any characters.
+    /// </summary>
+    private static bool MatchesWildcard(string pattern, string value)
+    {
+        if (string.Equals(pattern, value, StringComparison.OrdinalIgnoreCase)) return true;
+        if (!pattern.Contains('*')) return false;
+
+        var regexPattern = "^" + Regex.Escape(pattern).Replace("\\*", ".*") + "$";
+        return Regex.IsMatch(value, regexPattern, RegexOptions.IgnoreCase);
+    }
+
     private static RateLimitPartition<string> CreateLimiter(
-        string partitionKey,
-        RateLimitingOptions opts,
-        RateLimitPolicyOptions? policy)
+        string partitionKey, RateLimitingOptions opts, RateLimitPolicyOptions? policy)
     {
         var limiter = policy?.Limiter ?? opts.Limiter;
         var permitLimit = policy?.PermitLimit ?? opts.PermitLimit;
@@ -173,56 +245,19 @@ public static class RateLimitingExtensions
     private static void Validate(RateLimitingOptions options)
     {
         if (options.PermitLimit <= 0)
-            throw new ArgumentOutOfRangeException(nameof(options.PermitLimit), options.PermitLimit, "Permit limit must be greater than zero.");
+            throw new ArgumentOutOfRangeException(nameof(options.PermitLimit));
         if (options.WindowSeconds <= 0)
-            throw new ArgumentOutOfRangeException(nameof(options.WindowSeconds), options.WindowSeconds, "Window seconds must be greater than zero.");
+            throw new ArgumentOutOfRangeException(nameof(options.WindowSeconds));
         if (options.QueueLimit < 0)
-            throw new ArgumentOutOfRangeException(nameof(options.QueueLimit), options.QueueLimit, "Queue limit cannot be negative.");
-        if (options.RejectionStatusCode < StatusCodes.Status400BadRequest || options.RejectionStatusCode > 599)
-            throw new ArgumentOutOfRangeException(nameof(options.RejectionStatusCode), options.RejectionStatusCode, "Rejection status code must be a 4xx or 5xx status code.");
-        if (options.SegmentsPerWindow <= 0)
-            throw new ArgumentOutOfRangeException(nameof(options.SegmentsPerWindow), options.SegmentsPerWindow, "Segments per window must be greater than zero.");
-        if (options.ReplenishmentSeconds <= 0)
-            throw new ArgumentOutOfRangeException(nameof(options.ReplenishmentSeconds), options.ReplenishmentSeconds, "Replenishment seconds must be greater than zero.");
-        if (options.TokensPerPeriod <= 0)
-            throw new ArgumentOutOfRangeException(nameof(options.TokensPerPeriod), options.TokensPerPeriod, "Tokens per period must be greater than zero.");
-
-        if (options.Policies is null)
-            throw new ArgumentException("Policies collection cannot be null.", nameof(options.Policies));
-
-        foreach (var (name, policy) in options.Policies)
-            ValidatePolicy(name, policy);
+            throw new ArgumentOutOfRangeException(nameof(options.QueueLimit));
+        if (options.RejectionStatusCode < 400 || options.RejectionStatusCode > 599)
+            throw new ArgumentOutOfRangeException(nameof(options.RejectionStatusCode));
+        
+        var validPartitions = new[] { "user", "ip" };
+        if (!validPartitions.Contains(options.PartitionBy.ToLowerInvariant()))
+            throw new ArgumentException("PartitionBy must be 'user' or 'ip'.");
     }
 
-    private static void ValidatePolicy(string name, RateLimitPolicyOptions policy)
-    {
-        if (string.IsNullOrWhiteSpace(name))
-            throw new ArgumentException("Policy name is required.", nameof(name));
-        if (string.Equals(name, DefaultPolicyName, StringComparison.OrdinalIgnoreCase))
-            throw new ArgumentException($"Policy name '{DefaultPolicyName}' is reserved.", nameof(name));
-        if (policy.PermitLimit is <= 0)
-            throw new ArgumentOutOfRangeException(nameof(policy.PermitLimit), policy.PermitLimit, "Policy permit limit must be greater than zero.");
-        if (policy.WindowSeconds is <= 0)
-            throw new ArgumentOutOfRangeException(nameof(policy.WindowSeconds), policy.WindowSeconds, "Policy window seconds must be greater than zero.");
-        if (policy.QueueLimit is < 0)
-            throw new ArgumentOutOfRangeException(nameof(policy.QueueLimit), policy.QueueLimit, "Policy queue limit cannot be negative.");
-        if (policy.SegmentsPerWindow is <= 0)
-            throw new ArgumentOutOfRangeException(nameof(policy.SegmentsPerWindow), policy.SegmentsPerWindow, "Policy segments per window must be greater than zero.");
-        if (policy.ReplenishmentSeconds is <= 0)
-            throw new ArgumentOutOfRangeException(nameof(policy.ReplenishmentSeconds), policy.ReplenishmentSeconds, "Policy replenishment seconds must be greater than zero.");
-        if (policy.TokensPerPeriod is <= 0)
-            throw new ArgumentOutOfRangeException(nameof(policy.TokensPerPeriod), policy.TokensPerPeriod, "Policy tokens per period must be greater than zero.");
-        if (!IsSupportedPartition(policy.PartitionBy))
-            throw new ArgumentException("PartitionBy must be 'ip', 'user', or 'endpoint'.", nameof(policy.PartitionBy));
-    }
-
-    private static bool IsSupportedPartition(string? partitionBy)
-        => !string.IsNullOrWhiteSpace(partitionBy)
-           && (string.Equals(partitionBy, "ip", StringComparison.OrdinalIgnoreCase)
-           || string.Equals(partitionBy, "user", StringComparison.OrdinalIgnoreCase)
-           || string.Equals(partitionBy, "endpoint", StringComparison.OrdinalIgnoreCase));
-
-    /// <summary>Mounts the rate-limiter middleware.</summary>
     public static IApplicationBuilder UseMassLabRateLimiting(this IApplicationBuilder app)
     {
         app.UseRateLimiter();
