@@ -8,6 +8,25 @@
     "UserPartition": {
       "ClaimName": "sub",
       "FallbackClaimName": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier",
+      "DefaultPolicy": {
+        "DefaultLimit": {
+          "Limiter": "TokenBucket",
+          "PermitLimit": 3,
+          "TokensPerPeriod": 10,
+          "ReplenishmentSeconds": 6,
+          "PerEndpoint": false
+        },
+        "EndpointOverrides": {
+          "/api/search/*": {
+            "PermitLimit": 2,
+            "WindowSeconds": 60
+          },
+          "/api/order/*": {
+            "PermitLimit": 30,
+            "WindowSeconds": 60
+          }
+        }
+      },
       "Policies": {
         "premium-user-123": {
           "DefaultLimit": {

@@ -14,6 +14,25 @@
     
     "UserPartition": {
       "ClaimName": "sub",
+      "DefaultPolicy": {
+        "DefaultLimit": {
+          "Limiter": "TokenBucket",
+          "PermitLimit": 3,
+          "TokensPerPeriod": 10,
+          "ReplenishmentSeconds": 6,
+          "PerEndpoint": false
+        },
+        "EndpointOverrides": {
+          "/api/search/rate2": {
+            "PermitLimit": 20,
+            "WindowSeconds": 60
+          },
+          "/api/order/*": {
+            "PermitLimit": 30,
+            "WindowSeconds": 60
+          }
+        }
+      },
       "Policies": {
         "premium-user-123": {
           "DefaultLimit": {
