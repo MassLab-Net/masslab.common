@@ -1,0 +1,40 @@
+﻿{
+  "RateLimiting": {
+    "PermitLimit": 100,
+    "WindowSeconds": 60,
+    "PartitionBy": "user",
+    "PerEndpoint": false,
+    
+    "UserPartition": {
+      "ClaimName": "sub",
+      "FallbackClaimName": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier",
+      "Policies": {
+        "premium-user-123": {
+          "DefaultLimit": {
+            "Limiter": "TokenBucket",
+            "PermitLimit": 500,
+            "TokensPerPeriod": 50,
+            "ReplenishmentSeconds": 10
+          },
+          "EndpointOverrides": {
+            "/api/export/*": {
+              "PermitLimit": 5,
+              "WindowSeconds": 3600
+            },
+            "/api/ai/*": {
+              "Limiter": "SlidingWindow",
+              "PermitLimit": 100,
+              "SegmentsPerWindow": 6
+            }
+          }
+        },
+        "free-user-456": {
+          "DefaultLimit": {
+            "PermitLimit": 30,
+            "WindowSeconds": 60
+          }
+        }
+      }
+    }
+  }
+}

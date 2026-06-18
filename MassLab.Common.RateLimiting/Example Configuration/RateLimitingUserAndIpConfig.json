@@ -1,0 +1,68 @@
+﻿{
+  "RateLimiting": {
+    "PermitLimit": 100,
+    "WindowSeconds": 60,
+    "Limiter": "FixedWindow",
+    "QueueLimit": 0,
+    "RejectionStatusCode": 429,
+    "PerEndpoint": false,
+    "PartitionBy": "user",
+    
+    "SegmentsPerWindow": 4,
+    "ReplenishmentSeconds": 10,
+    "TokensPerPeriod": 10,
+    
+    "UserPartition": {
+      "ClaimName": "sub",
+      "Policies": {
+        "premium-user-123": {
+          "DefaultLimit": {
+            "Limiter": "TokenBucket",
+            "PermitLimit": 500,
+            "TokensPerPeriod": 50,
+            "ReplenishmentSeconds": 10,
+            "PerEndpoint": false
+          },
+          "EndpointOverrides": {
+            "/api/export/*": {
+              "PermitLimit": 5,
+              "WindowSeconds": 3600
+            },
+            "/api/ai/*": {
+              "Limiter": "SlidingWindow",
+              "PermitLimit": 100,
+              "WindowSeconds": 60,
+              "SegmentsPerWindow": 6
+            }
+          }
+        }
+      }
+    },
+    
+    "IpPartition": {
+      "Policies": {
+        "10.0.0.*": {
+          "DefaultLimit": {
+            "PermitLimit": 500
+          }
+        }
+      }
+    },
+    
+    "Policies": {
+      "writes": {
+        "Limiter": "TokenBucket",
+        "PermitLimit": 20,
+        "TokensPerPeriod": 5,
+        "ReplenishmentSeconds": 10,
+        "PartitionBy": "user"
+      },
+      "strict": {
+        "PermitLimit": 10,
+        "WindowSeconds": 60,
+        "PartitionBy": "ip",
+        "PerEndpoint": true
+      }
+    }
+  }
+}
