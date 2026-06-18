@@ -68,6 +68,7 @@ jobs:
           --configuration Release
           --no-build
           --verbosity normal
+          --filter "Category!=Docker"
 
       - name: Pack
         shell: bash

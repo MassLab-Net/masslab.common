@@ -98,8 +98,8 @@ public static class RateLimitingExtensions
             var userId = ResolveUserId(ctx, opts);
             if (!string.IsNullOrEmpty(userId))
             {
-                var clientPolicy = FindClientPolicy(opts.UserPartition?.Policies, userId);
-                var effectivePolicy = ResolveEndpointPolicy(clientPolicy, ctx.Request.Path, opts);
+                var clientPolicy = FindClientPolicy(opts.UserPartition?.Policies, userId, opts.UserPartition?.DefaultPolicy);
+                var effectivePolicy = ResolveEndpointPolicy(clientPolicy, ctx.Request.Path);
                 var perEndpoint = effectivePolicy?.PerEndpoint ?? opts.PerEndpoint;
                 var key = perEndpoint ? $"user:{userId}:{endpoint}" : $"user:{userId}";
                 return (key, effectivePolicy);
@@ -108,8 +108,8 @@ public static class RateLimitingExtensions
 
         // IP partition or fallback
         var ip = ResolveIp(ctx);
-        var ipClientPolicy = FindClientPolicy(opts.IpPartition?.Policies, ip);
-        var ipEffectivePolicy = ResolveEndpointPolicy(ipClientPolicy, ctx.Request.Path, opts);
+        var ipClientPolicy = FindClientPolicy(opts.IpPartition?.Policies, ip, opts.IpPartition?.DefaultPolicy);
+        var ipEffectivePolicy = ResolveEndpointPolicy(ipClientPolicy, ctx.Request.Path);
         var ipPerEndpoint = ipEffectivePolicy?.PerEndpoint ?? opts.PerEndpoint;
         var ipKey = ipPerEndpoint ? $"ip:{ip}:{endpoint}" : $"ip:{ip}";
         return (ipKey, ipEffectivePolicy);
@@ -119,7 +119,7 @@ public static class RateLimitingExtensions
     /// Finds matching client policy by exact match or wildcard.
     /// </summary>
     private static ClientRateLimitPolicy? FindClientPolicy(
-        Dictionary<string, ClientRateLimitPolicy>? policies, string clientId)
+        Dictionary<string, ClientRateLimitPolicy>? policies, string clientId, ClientRateLimitPolicy? defaultPolicy)
     {
         if (policies == null || policies.Count == 0) return null;
 
@@ -132,28 +132,28 @@ public static class RateLimitingExtensions
             if (MatchesWildcard(pattern, clientId)) return policy;
         }
 
-        return null;
+        return defaultPolicy;
     }
 
     /// <summary>
-    /// Resolves endpoint-specific policy or falls back to default.
+    /// Resolves endpoint-specific policy or falls back to defaults.
     /// </summary>
     private static RateLimitPolicyOptions? ResolveEndpointPolicy(
-        ClientRateLimitPolicy? clientPolicy, PathString path, RateLimitingOptions opts)
+        ClientRateLimitPolicy? clientPolicy, PathString path)
     {
-        if (clientPolicy == null) return null;
-
-        // Check endpoint overrides with wildcard support
-        foreach (var (pattern, policy) in clientPolicy.EndpointOverrides)
+        // Priority: EndpointOverride > ClientPolicy.DefaultLimit > PartitionDefault
+        if (clientPolicy != null)
         {
-            if (MatchesWildcard(pattern, path.Value ?? ""))
+            // Check endpoint overrides with wildcard support
+            foreach (var (pattern, policy) in clientPolicy.EndpointOverrides)
             {
-                policy.PerEndpoint = true;
-                return policy;
+                if (MatchesWildcard(pattern, path.Value ?? "")) return policy;
             }
-        }
 
-        return clientPolicy.DefaultLimit;
+            // Fallback to client's default
+            if (clientPolicy.DefaultLimit != null) return clientPolicy.DefaultLimit;
+        }
+        return null;
     }
 
     /// <summary>
@@ -252,10 +252,19 @@ public static class RateLimitingExtensions
             throw new ArgumentOutOfRangeException(nameof(options.QueueLimit));
         if (options.RejectionStatusCode < 400 || options.RejectionStatusCode > 599)
             throw new ArgumentOutOfRangeException(nameof(options.RejectionStatusCode));
-        
-        var validPartitions = new[] { "user", "ip" };
-        if (!validPartitions.Contains(options.PartitionBy.ToLowerInvariant()))
+
+        var validGlobalPartitions = new[] { "user", "ip" };
+        if (!validGlobalPartitions.Contains(options.PartitionBy.ToLowerInvariant()))
             throw new ArgumentException("PartitionBy must be 'user' or 'ip'.");
+
+        var validPolicyPartitions = new[] { "user", "ip", "endpoint" };
+        foreach (var (_, policy) in options.Policies)
+        {
+            if (!validPolicyPartitions.Contains(policy.PartitionBy.ToLowerInvariant()))
+                throw new ArgumentException(
+                    $"PartitionBy must be 'user', 'ip', or 'endpoint'.",
+                    nameof(RateLimitPolicyOptions.PartitionBy));
+        }
     }
 
     public static IApplicationBuilder UseMassLabRateLimiting(this IApplicationBuilder app)

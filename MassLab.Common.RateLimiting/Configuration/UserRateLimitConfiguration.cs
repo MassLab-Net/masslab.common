@@ -10,6 +10,9 @@ public class UserPartitionOptions
 
     /// <summary>Fallback claim name if primary not found.</summary>
     public string? FallbackClaimName { get; set; }
+    
+    /// <summary>Default policy applied to all users without specific config.</summary>
+    public ClientRateLimitPolicy? DefaultPolicy { get; set; }
 
     /// <summary>Per-user rate limit policies. Key = user ID.</summary>
     public Dictionary<string, ClientRateLimitPolicy> Policies { get; set; } = new(StringComparer.OrdinalIgnoreCase);
