@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Swashbuckle.AspNetCore.SwaggerGen;
+using MassLab.Common.Authentication.ApiKey;
 using MassLab.Common.Swagger.Configuration;
 using MassLab.Common.Swagger.Extensions;
 
@@ -62,5 +63,31 @@ public class SwaggerTests
         var options = provider.GetRequiredService<IOptions<SwaggerGenOptions>>().Value;
 
         options.SwaggerGeneratorOptions.SwaggerDocs.Should().ContainKey("v1");
+    }
+
+    [Fact]
+    public void AddSwaggerWithJwt_registers_api_key_header_when_configured()
+    {
+        var services = new ServiceCollection();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ApiKey:HeaderName"] = "X-Partner-Key",
+                ["ApiKey:ServiceHeaderName"] = "X-Partner-Service",
+                ["ApiKey:ApiKey"] = "test-secret",
+                ["ApiKey:RequireServiceName"] = "true"
+            })
+            .Build();
+
+        services.AddSwaggerWithJwt(configuration);
+
+        using var provider = services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptions<SwaggerGenOptions>>().Value;
+        var schemes = options.SwaggerGeneratorOptions.SecuritySchemes;
+
+        schemes.Should().ContainKey(ApiKeyDefaults.AuthenticationScheme);
+        schemes[ApiKeyDefaults.AuthenticationScheme].Name.Should().Be("X-Partner-Key");
+        schemes.Should().ContainKey("ApiKeyServiceName");
+        schemes["ApiKeyServiceName"].Name.Should().Be("X-Partner-Service");
     }
 }

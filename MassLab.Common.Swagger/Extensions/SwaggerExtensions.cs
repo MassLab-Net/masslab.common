@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.OpenApi;
 using System.Net.Mail;
 using System.Reflection;
+using MassLab.Common.Authentication.ApiKey;
 using MassLab.Common.Swagger.Configuration;
 
 namespace MassLab.Common.Swagger.Extensions;
@@ -77,6 +78,8 @@ public static class SwaggerExtensions
                     }
                 });
             }
+
+            AddApiKeySecurityDefinitions(o, configuration);
 
             // Default document — provider-driven docs are added by AddPerVersionDocs() below
             // when ApiVersioning is also installed.
@@ -158,6 +161,56 @@ public static class SwaggerExtensions
             "3.1" => OpenApiSpecVersion.OpenApi3_1,
             _ => throw new ArgumentException("OpenAPI version must be '2.0', '3.0', or '3.1'.", nameof(version))
         };
+
+    private static void AddApiKeySecurityDefinitions(
+        Swashbuckle.AspNetCore.SwaggerGen.SwaggerGenOptions options,
+        IConfiguration? configuration)
+    {
+        var apiKeySection = configuration?.GetSection(ApiKeyOptions.SectionName);
+        if (apiKeySection is null || !apiKeySection.Exists())
+            return;
+
+        var apiKeyOptions = new ApiKeyOptions();
+        apiKeySection.Bind(apiKeyOptions);
+
+        if (string.IsNullOrWhiteSpace(apiKeyOptions.HeaderName))
+            return;
+
+        options.AddSecurityDefinition(ApiKeyDefaults.AuthenticationScheme, new OpenApiSecurityScheme
+        {
+            Type = SecuritySchemeType.ApiKey,
+            In = ParameterLocation.Header,
+            Name = apiKeyOptions.HeaderName,
+            Description = $"API key header ({apiKeyOptions.HeaderName})."
+        });
+
+        var requirement = new OpenApiSecurityRequirement
+        {
+            {
+                new OpenApiSecuritySchemeReference(ApiKeyDefaults.AuthenticationScheme, null, null),
+                []
+            }
+        };
+
+        if (apiKeyOptions.RequireServiceName && !string.IsNullOrWhiteSpace(apiKeyOptions.ServiceHeaderName))
+        {
+            const string serviceSchemeName = "ApiKeyServiceName";
+
+            options.AddSecurityDefinition(serviceSchemeName, new OpenApiSecurityScheme
+            {
+                Type = SecuritySchemeType.ApiKey,
+                In = ParameterLocation.Header,
+                Name = apiKeyOptions.ServiceHeaderName,
+                Description = $"Caller service header ({apiKeyOptions.ServiceHeaderName})."
+            });
+
+            requirement.Add(
+                new OpenApiSecuritySchemeReference(serviceSchemeName, null, null),
+                []);
+        }
+
+        options.AddSecurityRequirement(_ => requirement);
+    }
 
     private static void Validate(SwaggerOptions options)
     {
