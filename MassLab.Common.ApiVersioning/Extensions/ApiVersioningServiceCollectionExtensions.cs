@@ -22,12 +22,14 @@ public static class ApiVersioningServiceCollectionExtensions
             .AddApiVersioning(o =>
             {
                 o.DefaultApiVersion = new ApiVersion(1, 0);
-                o.AssumeDefaultVersionWhenUnspecified = false;
+                o.AssumeDefaultVersionWhenUnspecified = true;
                 o.ReportApiVersions = true;
-                o.ApiVersionReader = ApiVersionReader.Combine(
-                    new UrlSegmentApiVersionReader(),
-                    new HeaderApiVersionReader("X-Api-Version"),
-                    new QueryStringApiVersionReader("api-version"));
+                // o.ApiVersionReader = ApiVersionReader.Combine(
+                //     new UrlSegmentApiVersionReader(),
+                //     new HeaderApiVersionReader("X-Api-Version"),
+                //     new QueryStringApiVersionReader("api-version")
+                //     )
+                //     ;
                 configure?.Invoke(o);
             })
             .AddApiExplorer(o =>
