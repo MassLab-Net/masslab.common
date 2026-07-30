@@ -13,8 +13,10 @@ public static class SmtpEmailExtensions
         var configured = new SmtpEmailOptions(); configuration?.GetSection(sectionName).Bind(configured); Validate(configured);
         if (configuration is not null) services.Configure<SmtpEmailOptions>(configuration.GetSection(sectionName)); else services.Configure<SmtpEmailOptions>(_ => { });
         services.AddSingleton<IEmailSender, SmtpEmailSender>();
+        services.AddSmtpEmailProviderFactory();
         return services;
     }
+    public static IServiceCollection AddSmtpEmailProviderFactory(this IServiceCollection services) { services.AddSingleton<IEmailProviderSenderFactory, SmtpEmailProviderSenderFactory>(); return services; }
     private static void Validate(SmtpEmailOptions options)
     {
         if (string.IsNullOrWhiteSpace(options.Host)) throw new ArgumentException("Host is required.", nameof(options.Host));

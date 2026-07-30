@@ -28,7 +28,15 @@ public static class ResendEmailExtensions
             client.DefaultRequestHeaders.UserAgent.ParseAdd("MassLab.Common.Email/1.0");
         });
         services.AddSingleton<IEmailSender>(sp => sp.GetRequiredService<ResendEmailSender>());
+        services.AddResendEmailProviderFactory();
         services.AddSingleton<IEmailMessageReader>(sp => sp.GetRequiredService<ResendEmailSender>());
+        return services;
+    }
+
+    public static IServiceCollection AddResendEmailProviderFactory(this IServiceCollection services)
+    {
+        services.AddHttpClient("MassLab.Common.Email.Resend.Dynamic");
+        services.AddSingleton<IEmailProviderSenderFactory, ResendEmailProviderSenderFactory>();
         return services;
     }
 

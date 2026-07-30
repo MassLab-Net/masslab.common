@@ -22,8 +22,10 @@ public static class SesEmailExtensions
             return string.IsNullOrWhiteSpace(options.AccessKey) ? new AmazonSimpleEmailServiceV2Client(config) : new AmazonSimpleEmailServiceV2Client(options.AccessKey, options.SecretKey, config);
         });
         services.AddSingleton<IEmailSender, SesEmailSender>();
+        services.AddSesEmailProviderFactory();
         return services;
     }
+    public static IServiceCollection AddSesEmailProviderFactory(this IServiceCollection services) { services.AddSingleton<IEmailProviderSenderFactory, SesEmailProviderSenderFactory>(); return services; }
     private static void Validate(SesEmailOptions options)
     {
         if (string.IsNullOrWhiteSpace(options.Region)) throw new ArgumentException("Region is required.", nameof(options.Region));
