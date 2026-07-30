@@ -20,3 +20,17 @@ The workflow:
 4. Packs all non-test projects into `artifacts/packages`.
 5. Uploads `.nupkg` files as workflow artifacts.
 6. Pushes packages to NuGet when the repository secret `NUGET_API_KEY` is configured.
+
+## Email common
+
+The email packages support local Handlebars templates, Resend, and SMTP:
+
+```csharp
+builder.Services.AddMassLabEmailCore();
+builder.Services.AddFileSystemEmailTemplates(builder.Configuration);
+builder.Services.AddResendEmail(builder.Configuration); // or AddSmtpEmail(...) / AddSesEmail(...)
+
+app.MapResendEmailWebhooks(); // only for the Resend provider
+```
+
+Use `IEmailSender` to submit single emails or batches. Register `IEmailDeliveryEventHandler` to persist verified Resend delivery and engagement events in the consumer's own history store.

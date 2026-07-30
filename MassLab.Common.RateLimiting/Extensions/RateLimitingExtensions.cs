@@ -121,7 +121,7 @@ public static class RateLimitingExtensions
     private static ClientRateLimitPolicy? FindClientPolicy(
         Dictionary<string, ClientRateLimitPolicy>? policies, string clientId, ClientRateLimitPolicy? defaultPolicy)
     {
-        if (policies == null || policies.Count == 0) return null;
+        if (policies == null || policies.Count == 0) return defaultPolicy;
 
         // Exact match first
         if (policies.TryGetValue(clientId, out var exact)) return exact;
